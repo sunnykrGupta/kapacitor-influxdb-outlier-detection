@@ -1,0 +1,73 @@
+// This TICKscript below will compute the running mean and compare current values to it.
+// It will then trigger an alert if the values are more than (3 SIGMA Rule) 1,2,3 standard deviations away from the mean.
+// https://en.wikipedia.org/wiki/68%E2%80%9395%E2%80%9399.7_rule
+
+// Helper links :
+// https://docs.influxdata.com/kapacitor/v1.4/nodes/window_node/#main-nav
+// https://docs.influxdata.com/kapacitor/v1.4/nodes/alert_node/#slack
+// https://docs.influxdata.com/kapacitor/v1.4/nodes/stream_node/#deadman
+
+
+
+// Immutable Parameters
+dbrp "telegraf"."autogen"
+
+
+//-- Database and Retention
+var db = 'telegraf'
+var rp = 'autogen'
+var measurement = 'cpu'
+
+//-- Thresholds Parameters
+var warn = 10
+var crit = 20
+var warnSigma = 1.0
+var critSigma = 2.0
+
+//-- { second = s, minute = m, hour = h, day = d }
+var period = 1h
+var every = 1m
+
+//-- Dataframe
+var data = stream
+    //...source
+    |from()
+        .database(db)
+        .retentionPolicy(rp)
+        .measurement(measurement)
+        .where(lambda: "cpu" == 'cpu-total')
+    //... extra field
+    |eval(lambda: 100.0 - "usage_idle")
+        .as('usedCpu')
+    //... processing window
+    |window()
+        .period(period)
+        .every(every)
+    |mean('usedCpu')
+        .as('statCpu')
+
+//-- Trigger critical alert if the throughput drops below 'x' data points every 'time'
+//-- Case where we dont receive data points
+data
+    |deadman(2.0, 10m)
+        .slack()
+        .channel('#kapacitor')
+
+//-- Thresholds
+var alert = data
+  |eval(lambda: sigma("statCpu"))
+    .as('sigma')
+    .keep()
+  |alert()
+    .id('Sigma_alert for localhost |  cpu_used : ')
+    .message('{{ .ID }}:{{ index .Fields "statCpu" }}')
+    .warn(lambda: "statCpu" > warn OR "sigma" > warnSigma)
+    .crit(lambda: "statCpu" > crit OR "sigma" > critSigma)
+    .stateChangesOnly(10m)
+
+
+// Alert
+alert
+  .log('/tmp/cpu_alert_log.txt')
+  .slack()
+        .channel('#kapacitor')
