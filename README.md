@@ -1,6 +1,6 @@
 ### Anomaly detection
 
-Python programs to understand and detect outliers. Kapacitor TICKscript (ie, part of influxdata company) to detect anomaly.
+Python programs to understand and detect outliers. Kapacitor TICKscript (ie, part of influxdata company) to detect anomaly after processing stream of metrics coming from Influxdb.
 
 #### Kapacitor
 
